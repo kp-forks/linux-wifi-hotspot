@@ -8,6 +8,7 @@ work out which one you are hitting before changing anything.
 | --- | --- | --- |
 | `Your adapter can not transmit to channel 36, frequency band 5GHz` | every 5GHz channel is flagged `no IR` | [disable LAR](#disabling-lar) |
 | `Failed to set beacon parameters` / `Interface initialization failed` | the AP must share the channel your WiFi client is on | nothing to do, `create_ap` now handles it |
+| `Frequency 5320 (primary) not allowed for AP mode, flags: ... RADAR` | your WiFi client is on a [DFS (radar detection) channel](#dfs-channels) which cannot be selected in AP mode | connect to a non-DFS channel |
 
 > **The fix here only covers `iwlmvm` adapters.** Check which Intel driver you
 > have before going further:
@@ -165,7 +166,7 @@ install steps repeat.
 ## The other restriction: one channel at a time
 
 Independently of any of the above, since Linux 6.11 `iwlwifi` only advertises AP
-mode in a single-channel interface combination (kernel commit `5c38bedac16a`):
+mode in a single-channel interface combination (kernel [commit `5c38bedac16a`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=5c38bedac16a946402b627621b3d4bfcc9952479), see also [Bugzilla 219394](https://bugzilla.kernel.org/show_bug.cgi?id=219394)):
 
 ```
 * #{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, ...  #channels <= 2   <- no AP
@@ -187,6 +188,25 @@ This is a hardware and driver limitation. Disabling LAR does not change it, and
 there is no `create_ap` option that works around it. To host on a specific
 channel, connect the client to a network on that channel, or share a different
 uplink such as ethernet.
+
+## DFS channels
+
+Parts of the 5GHz band are shared with radars, so regulators require an access
+point run **DFS** (radar detection). Such channels are refused in AP mode:
+
+    Frequency 5320 (primary) not allowed for AP mode, flags: 0x969 RADAR
+    Primary frequency not allowed
+    ...
+    Could not select hw_mode and channel. (-3)
+
+Joining a network on such a channel stays fine - a client only answers an AP,
+it does not initiate radiation - but combined with the
+[single-channel](#the-other-restriction-one-channel-at-a-time) restriction,
+`create_ap` follows the client onto the DFS channel and hostapd then rejects
+it.  Whether a channel is DFS is a property of your regulatory domain (`(radar
+detection)` in `iw list`, `DFS` in `iw reg get`); non-DFS 5GHz channels are
+36/40/44/48 or some other channels your domain permits. Neither `create_ap` nor
+the LAR fix can lift it.
 
 ## Channel width
 
